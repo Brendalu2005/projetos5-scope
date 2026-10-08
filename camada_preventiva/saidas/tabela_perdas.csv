@@ -1,0 +1,6 @@
+etapa,entrou,saiu,perdeu,obs
+0 empilhar 2023-2025,288603,288603,0,
+1 filtrar recorte,288603,91140,197463,"termos=['LIMPEZA URBANA', 'DRENAGEM']"
+2 duplicatas exatas,91140,91140,0,
+3 datas inválidas/fora do ano,91140,79189,11951,
+5-6 coordenadas,79189,79189,0,"37,661 sem coordenada; -37,618 fora do Recife; mantidas com COORD_VALIDA=False (saem só na base de pontos)"
