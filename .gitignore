@@ -1,0 +1,6 @@
+dados/bruto/*
+dados/processado/*
+!dados/bruto/.gitkeep
+!dados/processado/.gitkeep
+.venv/
+__pycache__/
