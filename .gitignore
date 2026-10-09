@@ -1,6 +1,14 @@
-dados/bruto/*
-dados/processado/*
-!dados/bruto/.gitkeep
-!dados/processado/.gitkeep
+
 .venv/
+
+# Ignorar arquivos gerados
+camada_preventiva/saidas/*
+camada_preventiva/dados/bruto/*
+camada_preventiva/dados/processado/*
+
+# Manter as pastas no GitHub
+!camada_preventiva/dados/bruto/.gitkeep
+!camada_preventiva/dados/processado/.gitkeep
+
+# Cache do Python
 __pycache__/
