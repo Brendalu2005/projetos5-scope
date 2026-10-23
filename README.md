@@ -175,6 +175,29 @@ A conferência visual seleciona o ponto mais frequente, o de maior distância ao
 centro e um de menor contagem, removendo repetições. Os gráficos usam distâncias
 em metros em relação ao centro e mostram os outros grupos próximos como contexto.
 
+## Sprint 4 — Camada de exposição simples
+
+A ficha parte dos pontos já gerados na Sprint 3; não recalcula nem altera o
+agrupamento. Execute as células do notebook até gerar
+`dados/processado/pontos_agrupados.parquet` e
+`dados/processado/denuncias_pontos.parquet`. Também são usadas as bases
+processadas `drenagem_elementos.parquet` e `setores_coleta.parquet`, além de
+`dados/bruto/roteiros_coleta.csv`.
+
+Na raiz do repositório, execute:
+
+```bash
+python camada_preventiva/exposicao.py
+```
+
+A ficha `saidas/ficha_exposicao_por_ponto.csv` tem uma linha por `ID_PONTO` e
+preserva o identificador e informações básicas do ponto. Resume a exposição em
+três aspectos: distância e tipo do elemento de drenagem mais próximo; cobertura,
+frequência e turno de coleta do setor que contém/intersecta o ponto; e roteiros
+de coleta associados aos logradouros das denúncias que formam o ponto. Sem
+correspondência espacial ou textual, os campos indicam a ausência de dado. O
+CSV é salvo em UTF-8 com BOM para facilitar a abertura em planilhas.
+
 ## Executar os testes
 
 ```bash
