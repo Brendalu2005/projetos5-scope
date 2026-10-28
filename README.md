@@ -175,28 +175,118 @@ A conferência visual seleciona o ponto mais frequente, o de maior distância ao
 centro e um de menor contagem, removendo repetições. Os gráficos usam distâncias
 em metros em relação ao centro e mostram os outros grupos próximos como contexto.
 
-## Sprint 4 — Camada de exposição simples
+## Sprint 4 - Camada de exposição simples
 
-A ficha parte dos pontos já gerados na Sprint 3; não recalcula nem altera o
-agrupamento. Execute as células do notebook até gerar
-`dados/processado/pontos_agrupados.parquet` e
-`dados/processado/denuncias_pontos.parquet`. Também são usadas as bases
-processadas `drenagem_elementos.parquet` e `setores_coleta.parquet`, além de
-`dados/bruto/roteiros_coleta.csv`.
-
-Na raiz do repositório, execute:
+Após gerar os pontos no notebook, execute na raiz:
 
 ```bash
 python camada_preventiva/exposicao.py
 ```
 
-A ficha `saidas/ficha_exposicao_por_ponto.csv` tem uma linha por `ID_PONTO` e
-preserva o identificador e informações básicas do ponto. Resume a exposição em
-três aspectos: distância e tipo do elemento de drenagem mais próximo; cobertura,
-frequência e turno de coleta do setor que contém/intersecta o ponto; e roteiros
-de coleta associados aos logradouros das denúncias que formam o ponto. Sem
-correspondência espacial ou textual, os campos indicam a ausência de dado. O
-CSV é salvo em UTF-8 com BOM para facilitar a abertura em planilhas.
+A ficha `camada_preventiva/saidas/ficha_exposicao_por_ponto.csv` preserva os
+891 pontos e seus identificadores. Ela usa três aspectos mínimos:
+
+- Distância e tipo do elemento de drenagem mais próximo, com indicador até 100 m.
+- Setor, frequência e turno da coleta regular e seletiva, com campos separados e resumo textual.
+- Candidatos de roteiro associados aos nomes dos logradouros das denúncias.
+
+A drenagem significa **qualquer elemento cadastrado** (CG, PV ou BL), sem afirmar
+que todos recebem água diretamente da rua. A distância usa a geometria em
+EPSG:31985; presença de infraestrutura não comprova risco nem condição física.
+Os campos originais X/Y dos elementos não são usados para medir a distância.
+
+Os setores são reconstruídos do GeoJSON bruto: geometrias inválidas são
+corrigidas, componentes sem área são descartados e ilhas pequenas são mantidas.
+A união usa a combinação completa dos seis campos de coleta. O notebook usa a
+mesma regra, para não voltar a remover a cobertura das ilhas pequenas. O resultado
+substitui `dados/processado/setores_coleta.parquet`. Sem polígono o status é
+`SEM_COBERTURA_MAPEADA`, não "sem serviço". Sobreposição de cadastros distintos
+recebe `AMBIGUA`; os atributos separados não são preenchidos com uma escolha arbitrária.
+
+O CSV de roteiros não possui geometria ou chave territorial comprovadamente
+compatível com os polígonos. Portanto, o nome da rua **não confirma uma rota**.
+`STATUS_ROTEIRO` distingue `SEM_CORRESPONDENCIA`, `CANDIDATO_TEXTUAL` (uma
+combinação) e `AMBIGUO` (várias). As alternativas ficam visíveis para conferência,
+mas não entram no cálculo da confiança como cobertura confirmada. Isso permite
+usar a cobertura espacial dos setores sem inventar uma correspondência entre códigos.
+
+Também são gerados `dados/processado/exposicao_areas.parquet` e
+`saidas/exposicao_areas.csv`, com os **12 bairros oficiais da RPA 4**:
+`ID_AREA` é o código oficial do bairro; as variáveis mínimas são área em km²,
+densidade de elementos de drenagem e fração da área com coleta regular mapeada.
+Elas são calculadas independentemente das denúncias, incluindo bairros sem registros.
+As interseções usam geometrias válidas e o mesmo CRS em metros.
+
+## Sprint 5 - Confiança do Sinal (primeira versão)
+
+Execute depois da exposição:
+
+```bash
+python camada_preventiva/confianca.py
+```
+
+A unidade de comparação é o **bairro oficial da RPA 4**. Os pontos mantêm
+`ID_PONTO` e recebem o resultado da área onde está seu centro. A comparação
+é por área: `OBSERVADO_AREA` e `ESPERADO_AREA` na ficha dos pontos não são
+contagens individuais daquele ponto.
+
+O observado conta cada denúncia com coordenada válida dentro dos bairros uma
+única vez, usando sua própria localização, mesmo quando um grupo atravessa uma
+fronteira. Sobre a fronteira, o menor código oficial desempata a atribuição.
+Bairros sem denúncias continuam na tabela com zero. Coordenadas fora da RPA não
+são deslocadas para o bairro informado: ficam em diagnóstico para revisão.
+
+A referência esperada é uma heurística relativa, sem regressão, treinamento ou
+previsão. Para o mesmo período e conjunto de áreas:
+
+```text
+densidade_relativa = densidade_drenagem / maior_densidade_drenagem
+peso = area_km2 * (1 + densidade_relativa)
+esperado = total_observado * peso / soma_dos_pesos
+```
+
+Se todas as densidades forem zero, o ajuste vale zero e o peso é apenas a área.
+O fator entre 1 e 2 dá mais peso a áreas com maior densidade de infraestrutura.
+Essa é uma **hipótese operacional do piloto**, não uma relação causal validada.
+Os esperados somam o total observado e podem ser fracionários. Quando não há
+observação em nenhuma área, todas ficam `A_VERIFICAR` e não se calcula uma razão 0/0.
+A proximidade/densidade de drenagem não prova maior risco de alagamento.
+
+A regra de classificação é explícita:
+
+- `CONFIRMADO`: observado positivo e igual ou acima do esperado, com dados disponíveis,
+  pelo menos 50% de coordenadas válidas no bairro informado e 80% de cobertura de coleta mapeada.
+- `A_VERIFICAR`: déficit de denúncias, dados ausentes ou cobertura abaixo desses limites.
+  A justificativa informa o motivo. Déficit é **possível silêncio**, não ausência comprovada de denúncias.
+
+Os limites 50%/80% são parâmetros fixos em `confianca.py`, não limiares aprendidos.
+A cobertura de coordenadas é um diagnóstico pelo bairro **informado** no 156,
+que pode divergir da localização. Os registros sem coordenadas válidas não viram
+observação zero nem são redistribuídos. Falta de coleta mapeada também não vira
+peso de risco: serve para sinalizar dados insuficientes.
+
+A execução atual compara 3.354 denúncias dentro da RPA geométrica. Dos 5.821
+registros do piloto, 2.373 não têm coordenadas válidas e 94 georreferenciados ficam
+fora da RPA. Os 891 pontos continuam na ficha; centros fora da RPA recebem
+`A_VERIFICAR`. Essas exclusões ficam explícitas nos diagnósticos.
+
+O período usado vai de 02/01/2023 a 10/09/2025. Não é uma previsão para 2026;
+2025 está incompleto. A regra trabalha no mesmo período acumulado em todas as
+áreas, sem interpretar quedas anuais como silêncio. A padronização textual
+adicional e a política de exclusão por ano do arquivo permanecem como limitações
+anteriores, sem alteração nesta entrega.
+
+Saídas em `camada_preventiva/`:
+
+- `dados/processado/confianca_areas.parquet`: áreas com exposição, observado, esperado e classificação.
+- `saidas/confianca_por_area.csv`: tabela simples das áreas e justificativas.
+- `saidas/confianca_por_ponto.csv`: todos os pontos com o resultado de sua área.
+- `saidas/diagnostico_confianca.csv`: contagens usadas e excluídas.
+- `saidas/denuncias_fora_area.csv`: IDs das denúncias georreferenciadas fora do piloto geométrico.
+
+As bases brutas, a base limpa e os vínculos da sprint 3 são preservados. As saídas
+das sprints 4 e 5 são substituídas a cada execução. Ambas continuam no escopo de
+regras simples; não há IA generativa, modelos preditivos ou novas funcionalidades de interface.
 
 ## Executar os testes
 
